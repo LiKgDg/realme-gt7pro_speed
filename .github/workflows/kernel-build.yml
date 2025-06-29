@@ -1,0 +1,62 @@
+name: 手动构建 Linux 内核
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_version:
+        description: '内核版本 (例如: v5.15.10)'
+        required: true
+        default: 'master'
+      defconfig:
+        description: '默认配置文件 (例如: defconfig, x86_64_defconfig)'
+        required: true
+        default: 'x86_64_defconfig'
+      enable_modules:
+        description: '启用内核模块'
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 安装构建依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev wget bc rsync git
+
+      - name: 下载 realme GT7pro-Speed 内核源码
+        run: |
+          git clone https://github.com/realme-kernel-opensource/realme_GT7pro-Speed-AndroidV-kernel-source -b ${{ github.event.inputs.kernel_version }} linux
+          cd linux
+          git log -1 # 显示当前使用的提交
+
+      - name: 配置内核
+        working-directory: ./linux
+        run: |
+          make ${{ github.event.inputs.defconfig }}
+          if [[ "${{ github.event.inputs.enable_modules }}" == "true" ]]; then
+            echo "CONFIG_MODULES=y" >> .config
+          else
+            echo "CONFIG_MODULES=n" >> .config
+          fi
+
+      - name: 构建内核
+        working-directory: ./linux
+        run: |
+          make -j${{ github.event.inputs.cpu_count }} deb-pkg
+
+      - name: 收集构建产物
+        run: |
+          mkdir artifacts
+          cp *.deb artifacts/
+          cp linux/System.map artifacts/
+          cp linux/.config artifacts/config
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v3
+        with:
+          name: realme-gt7pro-kernel-${{ github.event.inputs.kernel_version }}
+          path: artifacts/
+    
