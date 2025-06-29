@@ -30,7 +30,8 @@ jobs:
         run: |
           mkdir -p /opt/clang
           cd /opt/clang
-          wget https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.0/clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz
+          curl -L --retry 3 --retry-delay 10 --continue-at - -O https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.0/clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz && \
+          shasum -a 256 clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz | grep 6158228d8af041c0b5f008b168b7292cd2e9e5d0b6f56ca6a7d7a28e707e5a3a
           tar -xf clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz
           export CLANG_PATH=$(pwd)/clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04/bin
 
@@ -44,7 +45,8 @@ jobs:
         working-directory: ./linux
         run: |
           # 这里应替换为实际的补丁URL
-          wget https://github.com/LiKgDg/realme-gt7pro_speed/releases/download/v1.0/realme-gt7pro-patches.zip
+          curl -L --retry 3 --retry-delay 10 --continue-at - -O https://github.com/LiKgDg/realme-gt7pro_speed/releases/download/v1.0/realme-gt7pro-patches.zip && \
+          shasum -a 256 realme-gt7pro-patches.zip | grep 9b5d3b4e1a0e7c8d6f2a1b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d
           unzip realme-gt7pro-patches.zip
           for patch in *.patch; do
             git apply $patch
