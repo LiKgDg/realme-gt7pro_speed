@@ -30,7 +30,8 @@ jobs:
         run: |
           mkdir -p /opt/clang
           cd /opt/clang
-          curl -L https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r416183b.tar.gz | tar -xz
+          curl -L -o clang.zip https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r416183b.zip
+          unzip clang.zip
 
       - name: 下载 realme GT7pro-Speed 内核源码
         run: |
