@@ -30,9 +30,9 @@ jobs:
         run: |
           mkdir -p /opt/clang
           cd /opt/clang
-          curl -L -o clang.zip https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r487747c.zip
-          unzip clang.zip -d clang-r487747c
-          export CLANG_PATH=/opt/clang-r487747c/bin
+          wget https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.0/clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz
+          tar -xf clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz
+          export CLANG_PATH=$(pwd)/clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04/bin
 
       - name: 下载 realme GT7pro-Speed 内核源码
         run: |
