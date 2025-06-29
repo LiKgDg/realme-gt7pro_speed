@@ -79,7 +79,7 @@ jobs:
           cp linux/.config artifacts/config
 
       - name: 上传构建产物
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: realme-gt7pro-kernel-${{ github.event.inputs.kernel_version }}
           path: artifacts/
