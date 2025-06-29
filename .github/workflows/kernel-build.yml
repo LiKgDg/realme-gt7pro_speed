@@ -35,7 +35,7 @@ jobs:
           curl -L --retry 3 --retry-delay 10 --continue-at - -O https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.0/clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz
           echo "Expected: 6158228d8af041c0b5f008b168b7292cd2e9e5d0b6f56ca6a7d7a28e707e5a3a"
           sha256sum clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz
-          sha256sum clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz | grep 6158228d8af041c0b5f008b168b7292cd2e9e5d0b6f56ca6a7d7a28e707e5a3a
+          sha256sum clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz | grep 61582215dafafb7b576ea30cc136be92c877ba1f1c31ddbbd372d6d65622fef5
           tar -xf clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz
           export CLANG_PATH=$(pwd)/clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04/bin
 
