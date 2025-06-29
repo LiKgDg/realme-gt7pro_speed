@@ -1,4 +1,4 @@
-name: 手动构建 realme GT7 Pro 内核
+name: 手动构建 realme GT7 Pro 内核 1.0
 
 on:
   workflow_dispatch:
