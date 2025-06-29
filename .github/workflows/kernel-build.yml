@@ -1,16 +1,16 @@
-name: 手动构建 Linux 内核
+name: 手动构建 realme GT7 Pro 内核
 
 on:
   workflow_dispatch:
     inputs:
       kernel_version:
-        description: '内核版本 (例如: v5.15.10)'
+        description: '内核版本/分支 (默认: master)'
         required: true
         default: 'master'
       defconfig:
-        description: '默认配置文件 (例如: defconfig, x86_64_defconfig)'
+        description: '默认配置文件'
         required: true
-        default: 'x86_64_defconfig'
+        default: 'vendor/realme/gt7pro_defconfig'
       enable_modules:
         description: '启用内核模块'
         type: boolean
@@ -24,7 +24,13 @@ jobs:
       - name: 安装构建依赖
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev wget bc rsync git
+          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev wget bc rsync git curl
+
+      - name: 安装AOSP Clang工具链
+        run: |
+          mkdir -p /opt/clang
+          cd /opt/clang
+          curl -L https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r416183b.tar.gz | tar -xz
 
       - name: 下载 realme GT7pro-Speed 内核源码
         run: |
@@ -32,9 +38,20 @@ jobs:
           cd linux
           git log -1 # 显示当前使用的提交
 
+      - name: 应用GT7 Pro专用补丁
+        working-directory: ./linux
+        run: |
+          # 这里应替换为实际的补丁URL
+          wget https://example.com/realme-gt7pro-patches.zip
+          unzip realme-gt7pro-patches.zip
+          for patch in *.patch; do
+            git apply $patch
+          done
+
       - name: 配置内核
         working-directory: ./linux
         run: |
+          export PATH=/opt/clang/bin:$PATH
           make ${{ github.event.inputs.defconfig }}
           if [[ "${{ github.event.inputs.enable_modules }}" == "true" ]]; then
             echo "CONFIG_MODULES=y" >> .config
@@ -44,14 +61,21 @@ jobs:
 
       - name: 构建内核
         working-directory: ./linux
+        env:
+          CC: /opt/clang/bin/clang
+          CXX: /opt/clang/bin/clang++
+          ARCH: arm64
+          SUBARCH: arm64
+          CROSS_COMPILE: aarch64-linux-gnu-
         run: |
-          make -j${{ github.event.inputs.cpu_count }} deb-pkg
+          make -j${{ github.event.inputs.cpu_count }} Image.gz-dtb modules dtbs
 
       - name: 收集构建产物
         run: |
           mkdir artifacts
-          cp *.deb artifacts/
-          cp linux/System.map artifacts/
+          cp linux/arch/arm64/boot/Image.gz-dtb artifacts/
+          find linux -name "*.ko" -exec cp {} artifacts/ \;
+          cp -r linux/arch/arm64/boot/dts/qcom artifacts/dts
           cp linux/.config artifacts/config
 
       - name: 上传构建产物
@@ -59,4 +83,3 @@ jobs:
         with:
           name: realme-gt7pro-kernel-${{ github.event.inputs.kernel_version }}
           path: artifacts/
-    
