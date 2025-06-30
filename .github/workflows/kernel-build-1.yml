@@ -1,10 +1,10 @@
-name: realme GT7 Pro Kernel Build with SukiSU (Fully Fixed)
+name: realme GT7 Pro Kernel Build with SukiSU (Final Fixed)
 
 on:
   workflow_dispatch:
     inputs:
       kernel-version:
-        description: '内核版本 (如: 5.10)'
+        description: '内核版本 (如: 6.6)'
         required: true
         default: '6.6'
       architecture:
@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 检出realme内核源码
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
       
@@ -95,7 +95,7 @@ jobs:
           sudo apt-get install -y python3 python3-pip
           pip3 install numpy==1.23.5 six==1.16.0 protobuf==3.20.3 wheel
       
-      - name: 集成SukiSU Ultra（增强版）
+      - name: 集成SukiSU Ultra（修复版）
         if: ${{ env.ENABLE_SUKISU == 'true' }}
         run: |
           mkdir -p sukisutemp
@@ -116,11 +116,23 @@ jobs:
           
           chmod +x setup.sh
           echo "开始集成SukiSU Ultra，GKI模式: $GKI_MODE"
+          ./setup.sh $([ "$GKI_MODE" == "true" ] && echo "main" || echo "nongki") || { echo "集成脚本执行失败"; exit 1; }
           
+          # 显式应用补丁（关键修复）
           if [ "$GKI_MODE" == "true" ]; then
-            ./setup.sh main || { echo "main分支集成失败"; exit 1; }
+            if [ -f kernel/patches/0001-Add-KSU-hooks-for-GKI.patch ]; then
+              patch -p1 < kernel/patches/0001-Add-KSU-hooks-for-GKI.patch || { echo "GKI补丁应用失败"; exit 1; }
+            else
+              echo "错误: GKI补丁文件缺失"
+              exit 1
+            fi
           else
-            ./setup.sh nongki || { echo "nongki分支集成失败"; exit 1; }
+            if [ -f kernel/patches/0001-Add-KSU-hooks-for-nongki.patch ]; then
+              patch -p1 < kernel/patches/0001-Add-KSU-hooks-for-nongki.patch || { echo "nongki补丁应用失败"; exit 1; }
+            else
+              echo "错误: nongki补丁文件缺失"
+              exit 1
+            fi
           fi
           
           cp -r kernel/* ..
@@ -147,16 +159,19 @@ jobs:
               make ARCH=arm64 $REALME_PLATFORM_defconfig
               echo "已加载 $REALME_PLATFORM_defconfig"
               
-              # 自动生成GKI配置文件
+              # 验证配置文件完整性
               GKI_CONFIG=build.config.gki.aarch64
-              if [ ! -f $GKI_CONFIG ]; then
-                echo "生成GKI配置文件: $GKI_CONFIG"
+              if [ ! -f $GKI_CONFIG ] || [ $(wc -l < $GKI_CONFIG) -lt 100 ]; then
                 make ARCH=arm64 $REALME_PLATFORM-gki_defconfig
                 cp .config $GKI_CONFIG
+                echo "已重新生成GKI配置文件"
               fi
               
+              # 复制到Bazel搜索路径
+              cp $GKI_CONFIG kernel/$GKI_CONFIG
+              echo "配置文件已复制到kernel/目录"
+              
               cp $GKI_CONFIG .config || { echo "GKI配置文件复制失败"; exit 1; }
-              echo "已应用GKI配置"
             else
               make ARCH=x86_64 gki_x86_64_defconfig
             fi
@@ -210,7 +225,7 @@ jobs:
           echo "==== 关键配置 ===="
           grep -E "KSU|SUSFS|ZRAM|KPM|TCP_BBR|GKI" .config
       
-      - name: 使用Bazel编译内核（优化版）
+      - name: 使用Bazel编译内核（增强版）
         run: |
           export BAZEL_VS=16
           export PATH=$PATH:/usr/bin:/usr/local/bin
@@ -218,10 +233,13 @@ jobs:
           
           bazel version
           
-          # 导出GKI配置路径
           if [ "$GKI_MODE" == "true" ] && [ "$ARCH" == "arm64" ]; then
             export KERNEL_CONFIG=build.config.gki.aarch64
             echo "使用GKI配置: $KERNEL_CONFIG"
+            
+            # 显式指定Bazel配置文件路径（关键修复）
+            sed -i "s|config_path =.*|config_path = \"$KERNEL_CONFIG\"|" kernel/BUILD.bazel
+            echo "已更新BUILD.bazel中的配置路径"
           fi
           
           if [ "$ARCH" == "arm64" ]; then
@@ -331,7 +349,7 @@ jobs:
           ls -la output/
       
       - name: 上传构建产物
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: realme-gt7pro-kernel
           path: output/
