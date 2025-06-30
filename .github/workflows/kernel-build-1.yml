@@ -24,7 +24,7 @@ on:
 env:
   DEVICE_CODENAME: RMX5090
   DEVICE_DEFCONFIG: vendor/RMX5090_defconfig
-  KERNEL_URL: realme-kernel-opensource/realme_GT7pro-Speed-AndroidV-kernel-source
+  KERNEL_URL: realme-kernel-opensource/realme_GT7pro-Speed-AndroidV-common-source
   KERNEL_BRANCH: master
   ANYKERNEL_URL: https://github.com/osm0sis/AnyKernel3.git
   # 替换为有效的 Clang 工具链下载链接，这里使用 llvm-project 示例
