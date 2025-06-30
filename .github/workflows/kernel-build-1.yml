@@ -1,0 +1,123 @@
+name: Kernel Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      ksu_branch:
+        description: '内核强化分支'
+        required: true
+        default: 'main'
+        type: choice
+        options:
+          - main
+          - SukiSU-Ultra
+          - staging
+      release_type:
+        description: '发布类型'
+        required: true
+        default: 'testing'
+        type: choice
+        options:
+          - testing
+          - stable
+
+env:
+  DEVICE_CODENAME: RMX3761
+  DEVICE_DEFCONFIG: vendor/RMX3761_defconfig
+  KERNEL_URL: https://github.com/realme-kernel-opensource/realme_GT7pro-Speed-AndroidV-kernel-source.git
+  KERNEL_BRANCH: thirteen
+  ANYKERNEL_URL: https://github.com/osm0sis/AnyKernel3.git
+  TOOLCHAIN_URL: https://github.com/kdrag0n/proton-clang.git
+  ARCH: arm64
+  SUBARCH: arm64
+  KBUILD_BUILD_HOST: GitHub
+  KBUILD_BUILD_USER: Action
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: 环境准备
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev libelf-dev libc6:i386 libncurses5:i386 libstdc++6:i386
+
+      - name: 克隆内核源码
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.KERNEL_URL }}
+          ref: ${{ env.KERNEL_BRANCH }}
+          path: kernel
+
+      - name: 克隆编译工具链
+        run: |
+          git clone --depth=1 ${{ env.TOOLCHAIN_URL }} -b master proton-clang
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 -b lineage-20 aarch64-linux-android-4.9
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 -b lineage-20 arm-linux-androideabi-4.9
+
+      - name: 克隆AnyKernel3
+        run: |
+          git clone --depth=1 ${{ env.ANYKERNEL_URL }} AnyKernel3
+
+      - name: 设置环境变量
+        run: |
+          echo "PATH=$(pwd)/proton-clang/bin:$(pwd)/aarch64-linux-android-4.9/bin:$(pwd)/arm-linux-androideabi-4.9/bin:$PATH" >> $GITHUB_ENV
+          echo "KBUILD_COMPILER_STRING=$(pwd)/proton-clang/bin/clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//'" >> $GITHUB_ENV
+
+      - name: 配置内核
+        working-directory: ./kernel
+        run: |
+          export CROSS_COMPILE=$(pwd)/../aarch64-linux-android-4.9/bin/aarch64-linux-android-
+          export CROSS_COMPILE_ARM32=$(pwd)/../arm-linux-androideabi-4.9/bin/arm-linux-androideabi-
+          make O=out ARCH=${{ env.ARCH }} ${{ env.DEVICE_DEFCONFIG }}
+
+      - name: 集成强化模块
+        working-directory: ./kernel
+        run: |
+          case "${{ github.event.inputs.ksu_branch }}" in
+            SukiSU-Ultra)
+              curl -LSs "https://raw.githubusercontent.com/SukiSU/SukiSU-Ultra/main/kernel/setup.sh" | bash -s master
+              ;;
+            *)
+              curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s ${{ github.event.inputs.ksu_branch }}
+              ;;
+          esac
+
+      - name: 编译内核
+        working-directory: ./kernel
+        run: |
+          export CROSS_COMPILE=$(pwd)/../aarch64-linux-android-4.9/bin/aarch64-linux-android-
+          export CROSS_COMPILE_ARM32=$(pwd)/../arm-linux-androideabi-4.9/bin/arm-linux-androideabi-
+          make -j$(nproc) O=out ARCH=${{ env.ARCH }} CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip
+
+      - name: 检查编译结果
+        working-directory: ./kernel/out/arch/${{ env.ARCH }}/boot
+        run: |
+          if [ -f Image.gz-dtb ]; then
+            echo "编译成功！"
+          else
+            echo "编译失败！"
+            exit 1
+          fi
+
+      - name: 准备AnyKernel3
+        working-directory: ./AnyKernel3
+        run: |
+          cp ../kernel/out/arch/${{ env.ARCH }}/boot/Image.gz-dtb .
+          if [ -f ../kernel/out/arch/${{ env.ARCH }}/boot/dtbo.img ]; then
+            cp ../kernel/out/arch/${{ env.ARCH }}/boot/dtbo.img .
+          fi
+          zip -r9 Kernel-${{ env.DEVICE_CODENAME }}.zip * -x .git README.md *placeholder
+
+      - name: 发布构建
+        if: success()
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.DEVICE_CODENAME }}-${{ github.event.inputs.release_type }}-${{ github.run_number }}
+          release_name: ${{ env.DEVICE_CODENAME }} ${{ github.event.inputs.release_type }} Build ${{ github.run_number }}
+          files: AnyKernel3/Kernel-${{ env.DEVICE_CODENAME }}.zip
+          draft: false
+          prerelease: ${{ github.event.inputs.release_type == 'testing' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}    
