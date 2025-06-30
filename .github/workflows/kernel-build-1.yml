@@ -24,7 +24,7 @@ on:
 env:
   DEVICE_CODENAME: RMX5090
   DEVICE_DEFCONFIG: vendor/RMX5090_defconfig
-  KERNEL_URL: https://github.com/realme-kernel-opensource/realme_GT7pro-Speed-AndroidV-kernel-source.git
+  KERNEL_URL: realme-kernel-opensource/realme_GT7pro-Speed-AndroidV-kernel-source
   KERNEL_BRANCH: thirteen
   ANYKERNEL_URL: https://github.com/osm0sis/AnyKernel3.git
   TOOLCHAIN_URL: https://github.com/kdrag0n/proton-clang.git
@@ -47,7 +47,7 @@ jobs:
       - name: 克隆内核源码
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.KERNEL_URL }}
+          repository: realme-kernel-opensource/realme_GT7pro-Speed-AndroidV-kernel-source
           ref: ${{ env.KERNEL_BRANCH }}
           path: kernel
 
