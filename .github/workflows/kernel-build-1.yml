@@ -25,7 +25,7 @@ env:
   DEVICE_CODENAME: RMX5090
   DEVICE_DEFCONFIG: vendor/RMX5090_defconfig
   KERNEL_URL: realme-kernel-opensource/realme_GT7pro-Speed-AndroidV-kernel-source
-  KERNEL_BRANCH: thirteen
+  KERNEL_BRANCH: thirteen-release
   ANYKERNEL_URL: https://github.com/osm0sis/AnyKernel3.git
   TOOLCHAIN_URL: https://github.com/kdrag0n/proton-clang.git
   ARCH: arm64
@@ -121,4 +121,4 @@ jobs:
           draft: false
           prerelease: ${{ github.event.inputs.release_type == 'testing' }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}    
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
