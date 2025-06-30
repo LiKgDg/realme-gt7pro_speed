@@ -54,8 +54,8 @@ jobs:
       - name: 克隆编译工具链
         run: |
           git clone --depth=1 ${{ env.TOOLCHAIN_URL }} -b master proton-clang
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 -b lineage-19.1 aarch64-linux-android-4.9
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 -b lineage-19.1 arm-linux-androideabi-4.9
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-9.x aarch64-linux-android-9.x
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-9.x arm-linux-androideabi-9.x
 
       - name: 克隆AnyKernel3
         run: |
@@ -63,14 +63,14 @@ jobs:
 
       - name: 设置环境变量
         run: |
-          echo "PATH=$(pwd)/proton-clang/bin:$(pwd)/aarch64-linux-android-4.9/bin:$(pwd)/arm-linux-androideabi-4.9/bin:$PATH" >> $GITHUB_ENV
+          echo "PATH=$(pwd)/proton-clang/bin:$(pwd)/aarch64-linux-android-9.x/bin:$(pwd)/arm-linux-androideabi-9.x/bin:$PATH" >> $GITHUB_ENV
           echo "KBUILD_COMPILER_STRING=$(pwd)/proton-clang/bin/clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//'" >> $GITHUB_ENV
 
       - name: 配置内核
         working-directory: ./kernel
         run: |
-          export CROSS_COMPILE=$(pwd)/../aarch64-linux-android-4.9/bin/aarch64-linux-android-
-          export CROSS_COMPILE_ARM32=$(pwd)/../arm-linux-androideabi-4.9/bin/arm-linux-androideabi-
+          export CROSS_COMPILE=$(pwd)/../aarch64-linux-android-9.x/bin/aarch64-linux-android-
+          export CROSS_COMPILE_ARM32=$(pwd)/../arm-linux-androideabi-9.x/bin/arm-linux-androideabi-
           make O=out ARCH=${{ env.ARCH }} ${{ env.DEVICE_DEFCONFIG }}
 
       - name: 集成强化模块
@@ -88,8 +88,8 @@ jobs:
       - name: 编译内核
         working-directory: ./kernel
         run: |
-          export CROSS_COMPILE=$(pwd)/../aarch64-linux-android-4.9/bin/aarch64-linux-android-
-          export CROSS_COMPILE_ARM32=$(pwd)/../arm-linux-androideabi-4.9/bin/arm-linux-androideabi-
+          export CROSS_COMPILE=$(pwd)/../aarch64-linux-android-9.x/bin/aarch64-linux-android-
+          export CROSS_COMPILE_ARM32=$(pwd)/../arm-linux-androideabi-9.x/bin/arm-linux-androideabi-
           make -j$(nproc) O=out ARCH=${{ env.ARCH }} CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip
 
       - name: 检查编译结果
