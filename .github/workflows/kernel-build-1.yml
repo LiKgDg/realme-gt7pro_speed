@@ -1,142 +1,161 @@
-name: Kernel Build
+name: realme GT7 Pro Kernel Build with SukiSU
 
 on:
   workflow_dispatch:
     inputs:
-      ksu_branch:
-        description: '内核强化分支'
+      kernel-version:
+        description: '内核版本 (如: 6.6)'
         required: true
-        default: 'main'
-        type: choice
-        options:
-          - main
-          - SukiSU-Ultra
-          - staging
-      release_type:
-        description: '发布类型'
+        default: '6.6'
+      architecture:
+        description: '架构 (arm64/x86_64)'
         required: true
-        default: 'master'
-        type: choice
-        options:
-          - master
-          - stable
-
-env:
-  DEVICE_CODENAME: RMX5090
-  DEVICE_DEFCONFIG: vendor/RMX5090_defconfig
-  KERNEL_URL: realme-kernel-opensource/realme_GT7pro-Speed-AndroidV-common-source
-  KERNEL_BRANCH: master
-  ANYKERNEL_URL: https://github.com/osm0sis/AnyKernel3.git
-  # 替换为有效的 Clang 工具链下载链接，这里使用 llvm-project 示例
-  TOOLCHAIN_URL: https://github.com/llvm/llvm-project.git
-  # 保留原有的 GCC 工具链链接，可按需确认有效性
-  GCC_TOOLCHAIN_URL: https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git
-  NDK_URL: https://git.codelinaro.org/clo/la/kernel_platform/toolchain/prebuilts/ndk/r23/-/archive/aosp-new/aosp-new/master/r23-aosp-new-aosp-new-master.tar.gz
-  ARCH: arm64
-  SUBARCH: arm64
-  KBUILD_BUILD_HOST: GitHub
-  KBUILD_BUILD_USER: Action
+        default: 'arm64'
+      gki-mode:
+        description: 'GKI模式 (true/false)'
+        required: true
+        default: 'true'
+        type: boolean
+      enable-sukisu:
+        description: '启用 SukiSU Ultra'
+        required: true
+        default: 'true'
+        type: boolean
+      enable-susfs:
+        description: '启用 SuSFS'
+        required: true
+        default: 'true'
+        type: boolean
+      enable-zram:
+        description: '启用 ZRAM'
+        required: true
+        default: 'true'
+        type: boolean
+      zram-algorithms:
+        description: 'ZRAM 算法 (逗号分隔, 如: lz4,lzo)'
+        required: false
+        default: 'lz4,lzo'
+      enable-kpm:
+        description: '启用 KPM'
+        required: true
+        default: 'true'
+        type: boolean
+      enable-bbr:
+        description: '启用 BBR'
+        required: true
+        default: 'true'
+        type: boolean
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
-
+    runs-on: ubuntu-latest
     steps:
-      - name: 环境准备
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses5:i386 libstdc++6:i386 libc6:i386
-
-      - name: 克隆内核源码
+      - name: 检出realme内核源码
         uses: actions/checkout@v4
         with:
-          repository: realme-kernel-opensource/realme_GT7pro-Speed-AndroidV-kernel-source
-          ref: ${{ env.KERNEL_BRANCH }}
-          path: kernel
-
-      - name: 克隆编译工具链
-        run: |
-          # 克隆 Clang 工具链 - 使用默认分支
-          git clone --depth=1 ${{ env.TOOLCHAIN_URL }} proton-clang
-          
-          # 下载并解压新的GCC工具链
-          echo "下载新的GCC工具链..."
-          mkdir -p gcc-toolchain
-          wget -q -O gcc-toolchain.tar.gz ${{ env.GCC_TOOLCHAIN_URL }}
-          echo "解压新的GCC工具链..."
-          tar -xzf gcc-toolchain.tar.gz -C gcc-toolchain --strip-components=1
-          # 验证GCC编译器是否存在
-          if [ ! -f gcc-toolchain/bin/aarch64-linux-android-gcc ]; then
-            echo "GCC 编译器未找到，请检查工具链下载和提取是否正确"
-            exit 1
-          fi
-          
-          # 克隆 NDK - 使用默认分支
-          git clone --depth=1 ${{ env.NDK_URL }} ndk-r23
-
-      - name: 克隆AnyKernel3
-        run: |
-          git clone --depth=1 ${{ env.ANYKERNEL_URL }} AnyKernel3
-
+          submodules: recursive
+      
       - name: 设置环境变量
         run: |
-          echo "PATH=$(pwd)/proton-clang/bin:$(pwd)/gcc-toolchain/bin:$(pwd)/ndk-r23/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH" >> $GITHUB_ENV
-          echo "KBUILD_COMPILER_STRING=$(pwd)/proton-clang/bin/clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//'" >> $GITHUB_ENV
-
-      - name: 配置内核
-        working-directory: ./kernel
-        run: |
-          export CROSS_COMPILE=$(pwd)/../gcc-toolchain/bin/aarch64-linux-android-
-          export CROSS_COMPILE_ARM32=$(pwd)/../gcc-toolchain/bin/arm-linux-androideabi-
-          make O=out ARCH=${{ env.ARCH }} ${{ env.DEVICE_DEFCONFIG }}
-
-      - name: 集成强化模块
-        working-directory: ./kernel
-        run: |
-          case "${{ github.event.inputs.ksu_branch }}" in
-            SukiSU-Ultra)
-              curl -LSs "https://raw.githubusercontent.com/SukiSU/SukiSU-Ultra/main/kernel/setup.sh" | bash -s master
-              ;;
-            *)
-              curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s ${{ github.event.inputs.ksu_branch }}
-              ;;
-          esac
-
-      - name: 编译内核
-        working-directory: ./kernel
-        run: |
-          export CROSS_COMPILE=$(pwd)/../gcc-toolchain/bin/aarch64-linux-android-
-          export CROSS_COMPILE_ARM32=$(pwd)/../gcc-toolchain/bin/arm-linux-androideabi-
-          make -j$(nproc) O=out ARCH=${{ env.ARCH }} CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip
-
-      - name: 检查编译结果
-        working-directory: ./kernel/out/arch/${{ env.ARCH }}/boot
-        run: |
-          if [ -f Image.gz-dtb ]; then
-            echo "编译成功！"
+          KERNEL_VERSION=${{ github.event.inputs.kernel-version }}
+          ARCH=${{ github.event.inputs.architecture }}
+          GKI_MODE=${{ github.event.inputs.gki-mode }}
+          ENABLE_SUKISU=${{ github.event.inputs.enable-sukisu }}
+          ENABLE_SUSFS=${{ github.event.inputs.enable-susfs }}
+          ENABLE_ZRAM=${{ github.event.inputs.enable-zram }}
+          ZRAM_ALGORITHMS=${{ github.event.inputs.zram-algorithms }}
+          ENABLE_KPM=${{ github.event.inputs.enable-kpm }}
+          ENABLE_BBR=${{ github.event.inputs.enable-bbr }}
+          
+          # realme高通平台配置
+          if [ "$ARCH" == "arm64" ]; then
+            REALME_PLATFORM="msm.sun"  # realme GT7 Pro高通平台标识
           else
-            echo "编译失败！"
-            exit 1
+            REALME_PLATFORM="x86_64"
           fi
-
-      - name: 准备AnyKernel3
-        working-directory: ./AnyKernel3
+          
+          echo "KERNEL_VERSION=$KERNEL_VERSION" >> $GITHUB_ENV
+          echo "ARCH=$ARCH" >> $GITHUB_ENV
+          echo "GKI_MODE=$GKI_MODE" >> $GITHUB_ENV
+          echo "ENABLE_SUKISU=$ENABLE_SUKISU" >> $GITHUB_ENV
+          echo "ENABLE_SUSFS=$ENABLE_SUSFS" >> $GITHUB_ENV
+          echo "ENABLE_ZRAM=$ENABLE_ZRAM" >> $GITHUB_ENV
+          echo "ZRAM_ALGORITHMS=$ZRAM_ALGORITHMS" >> $GITHUB_ENV
+          echo "ENABLE_KPM=$ENABLE_KPM" >> $GITHUB_ENV
+          echo "ENABLE_BBR=$ENABLE_BBR" >> $GITHUB_ENV
+          echo "REALME_PLATFORM=$REALME_PLATFORM" >> $GITHUB_ENV
+      
+      - name: 安装编译依赖
         run: |
-          cp ../kernel/out/arch/${{ env.ARCH }}/boot/Image.gz-dtb .
-          if [ -f ../kernel/out/arch/${{ env.ARCH }}/boot/dtbo.img ]; then
-            cp ../kernel/out/arch/${{ env.ARCH }}/boot/dtbo.img .
+          sudo apt-get update
+          sudo apt-get install -y bc bison flex libssl-dev make gcc-aarch64-linux-gnu 
+          sudo apt-get install -y bazel  # realme内核使用Bazel构建
+          if [ "$ARCH" == "x86_64" ]; then
+            sudo apt-get install -y gcc-x86-64-linux-gnu
           fi
-          zip -r9 Kernel-${{ env.DEVICE_CODENAME }}.zip * -x .git README.md *placeholder
-
-      - name: 发布构建
-        if: success()
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ env.DEVICE_CODENAME }}-${{ github.event.inputs.release_type }}-${{ github.run_number }}
-          release_name: ${{ env.DEVICE_CODENAME }} ${{ github.event.inputs.release_type }} Build ${{ github.run_number }}
-          files: AnyKernel3/Kernel-${{ env.DEVICE_CODENAME }}.zip
-          draft: false
-          prerelease: ${{ github.event.inputs.release_type == 'testing' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+          # 安装Python依赖用于Bazel构建
+          sudo apt-get install -y python3 python3-pip
+          pip3 install numpy six protobuf wheel
+      
+      - name: 集成SukiSU Ultra
+        if: ${{ env.ENABLE_SUKISU == 'true' }}
+        run: |
+          # 创建临时目录存放SukiSU脚本
+          mkdir -p sukisutemp
+          cd sukisutemp
+          
+          # 下载SukiSU安装脚本
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" -o setup.sh
+          chmod +x setup.sh
+          
+          # 集成到realme内核 (非GKI模式使用nongki分支)
+          if [ "$GKI_MODE" == "true" ]; then
+            ./setup.sh main
+          else
+            ./setup.sh nongki
+          fi
+          
+          # 将修改应用到realme内核根目录
+          cp -r kernel/* ..
+          cd ..
+          rm -rf sukisutemp
+      
+      - name: 配置SuSFS
+        if: ${{ env.ENABLE_SUSFS == 'true' }}
+        run: |
+          # realme内核若已集成SukiSU则自动包含SuSFS
+          if [ "$ENABLE_SUKISU" == "true" ]; then
+            echo "SukiSU已集成SuSFS，跳过单独配置"
+          else
+            # 手动启用SuSFS配置
+            echo "CONFIG_SUSFS=y" >> .config
+            echo "CONFIG_SUSFS_FS=y" >> .config
+          fi
+      
+      - name: 生成realme内核配置
+        run: |
+          # 清除旧配置
+          make ARCH=$ARCH mrproper
+          
+          # 加载realme默认配置 (GKI模式)
+          if [ "$GKI_MODE" == "true" ]; then
+            if [ "$ARCH" == "arm64" ]; then
+              make ARCH=arm64 $REALME_PLATFORM_defconfig
+              # 应用GKI配置
+              cp build.config.gki.aarch64 .config
+            else
+              make ARCH=x86_64 gki_x86_64_defconfig
+            fi
+          else
+            # 非GKI模式使用allmodconfig
+            if [ "$ARCH" == "arm64" ]; then
+              make ARCH=arm64 allmodconfig
+            else
+              make ARCH=x86_64 allmodconfig
+            fi
+          fi
+          
+          # SukiSU核心配置
+          if [ "$ENABLE_SUKISU" == "true" ]; then
+            echo "CONFIG_KSU=y" >> 
