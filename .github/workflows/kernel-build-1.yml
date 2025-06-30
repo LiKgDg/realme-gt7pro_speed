@@ -28,10 +28,10 @@ env:
   KERNEL_BRANCH: master
   ANYKERNEL_URL: https://github.com/osm0sis/AnyKernel3.git
   # 使用 manifest 中的工具链
-  TOOLCHAIN_URL: https://git.codelinaro.org/clo/la/kernelplatform/prebuilts-master/clang/host/linux-x86
-  # 替换为实际的GCC工具链下载链接
-  GCC_TOOLCHAIN_URL: https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/heads/master.tar.gz
-  NDK_URL: https://git.codelinaro.org/clo/la/kernel_platform/toolchain/prebuilts/ndk/r23
+  TOOLCHAIN_URL: https://git.codelinaro.org/clo/la/kernelplatform/prebuilts-master/clang/host/linux-x86/-/archive/aosp-new/aosp-new/master/linux-x86-aosp-new-aosp-new-master.tar.gz
+  # 替换为新的GCC工具链下载链接，需替换为实际可下载的链接
+  GCC_TOOLCHAIN_URL: https://git.codelinaro.org/clo/la/kernelplatform/prebuilts/gcc/linux-x86/host/x86_64-linux-glibc2.17-4.8/-/archive/aosp-new/caf2/caf2/clo/main/x86_64-linux-glibc2.17-4.8-aosp-new-caf2-caf2-clo-main.tar.gz
+  NDK_URL: https://git.codelinaro.org/clo/la/kernel_platform/toolchain/prebuilts/ndk/r23/-/archive/aosp-new/aosp-new/master/r23-aosp-new-aosp-new-master.tar.gz
   ARCH: arm64
   SUBARCH: arm64
   KBUILD_BUILD_HOST: GitHub
@@ -60,12 +60,17 @@ jobs:
           # 克隆 Clang 工具链 - 使用默认分支
           git clone --depth=1 ${{ env.TOOLCHAIN_URL }} proton-clang
           
-          # 下载并解压GCC工具链
-          echo "下载GCC工具链..."
+          # 下载并解压新的GCC工具链
+          echo "下载新的GCC工具链..."
           mkdir -p gcc-toolchain
           wget -q -O gcc-toolchain.tar.gz ${{ env.GCC_TOOLCHAIN_URL }}
-          echo "解压GCC工具链..."
+          echo "解压新的GCC工具链..."
           tar -xzf gcc-toolchain.tar.gz -C gcc-toolchain --strip-components=1
+          # 验证GCC编译器是否存在
+          if [ ! -f gcc-toolchain/bin/aarch64-linux-android-gcc ]; then
+            echo "GCC 编译器未找到，请检查工具链下载和提取是否正确"
+            exit 1
+          fi
           
           # 克隆 NDK - 使用默认分支
           git clone --depth=1 ${{ env.NDK_URL }} ndk-r23
