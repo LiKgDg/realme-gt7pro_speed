@@ -1,4 +1,4 @@
-name: realme GT7 Pro Kernel Build with SukiSU (Ultimate Fixed)
+name: realme GT7 Pro Kernel Build with SukiSU (Final Ultimate)
 
 on:
   workflow_dispatch:
@@ -55,6 +55,11 @@ jobs:
         with:
           submodules: recursive
       
+      - name: 初始化子模块（关键修复）
+        run: |
+          git submodule update --init --recursive
+          echo "子模块初始化完成"
+      
       - name: 设置环境变量
         run: |
           KERNEL_VERSION=${{ github.event.inputs.kernel-version }}
@@ -101,8 +106,11 @@ jobs:
           mkdir -p sukisutemp
           cd sukisutemp
           
+          # 三镜像源下载（解决网络问题）
           SUCCESS=false
-          for URL in "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" "https://gitee.com/mirrors/SukiSU-Ultra/raw/main/kernel/setup.sh"; do
+          for URL in "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" \
+                     "https://gitee.com/mirrors/SukiSU-Ultra/raw/main/kernel/setup.sh" \
+                     "https://hub.fastgit.xyz/SukiSU-Ultra/SukiSU-Ultra/raw/main/kernel/setup.sh"; do
             if curl -LSs -o setup.sh $URL; then
               SUCCESS=true
               break
@@ -110,7 +118,7 @@ jobs:
           done
           
           if [ "$SUCCESS" == "false" ]; then
-            echo "SukiSU脚本下载失败，请检查网络连接"
+            echo "SukiSU脚本下载失败，尝试手动下载后放入kernel目录"
             exit 1
           fi
           
@@ -118,7 +126,7 @@ jobs:
           echo "开始集成SukiSU Ultra，GKI模式: $GKI_MODE"
           ./setup.sh $([ "$GKI_MODE" == "true" ] && echo "main" || echo "nongki") || { echo "集成脚本执行失败"; exit 1; }
           
-          # 自动部署补丁文件（关键修复）
+          # 自动部署补丁文件（三重保障）
           mkdir -p kernel/patches
           if [ "$GKI_MODE" == "true" ]; then
             PATCH_URL="https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/patches/0001-Add-KSU-hooks-for-GKI.patch"
@@ -128,18 +136,24 @@ jobs:
             PATCH_FILE="kernel/patches/0001-Add-KSU-hooks-for-nongki.patch"
           fi
           
+          # 三重下载保障
           if [ ! -f $PATCH_FILE ]; then
-            curl -LSs $PATCH_URL -o $PATCH_FILE
-            chmod +x $PATCH_FILE
-            echo "已自动下载补丁: $PATCH_FILE"
+            for URL in $PATCH_URL "https://gitee.com/mirrors/SukiSU-Ultra/raw/main/kernel/patches/0001-Add-KSU-hooks-for-GKI.patch" "https://hub.fastgit.xyz/SukiSU-Ultra/SukiSU-Ultra/raw/main/kernel/patches/0001-Add-KSU-hooks-for-GKI.patch"; do
+              if curl -LSs $URL -o $PATCH_FILE; then
+                chmod +x $PATCH_FILE
+                echo "已从镜像下载补丁: $PATCH_FILE"
+                break
+              fi
+            done
           fi
           
-          # 显式应用补丁
-          if [ "$GKI_MODE" == "true" ]; then
-            patch -p1 < $PATCH_FILE || { echo "GKI补丁应用失败"; exit 1; }
-          else
-            patch -p1 < $PATCH_FILE || { echo "nongki补丁应用失败"; exit 1; }
+          if [ ! -f $PATCH_FILE ]; then
+            echo "补丁文件下载失败，请手动下载后放入kernel/patches目录"
+            exit 1
           fi
+          
+          # 应用补丁
+          patch -p1 < $PATCH_FILE || { echo "补丁应用失败，尝试手动应用"; exit 1; }
           
           cp -r kernel/* ..
           cd ..
@@ -166,14 +180,15 @@ jobs:
               echo "已加载 $REALME_PLATFORM_defconfig"
               
               GKI_CONFIG=build.config.gki.aarch64
-              # 三重验证配置文件
-              if [ ! -f $GKI_CONFIG ] || [ $(grep -c "CONFIG_KSU=y" $GKI_CONFIG) -eq 0 ] || [ $(wc -l < $GKI_CONFIG) -lt 100 ]; then
+              # 四重验证配置文件
+              if [ ! -f $GKI_CONFIG ] || [ $(grep -c "CONFIG_KSU=y" $GKI_CONFIG) -eq 0 ] || [ $(wc -l < $GKI_CONFIG) -lt 100 ] || [ $(grep -c "CONFIG_GKI=y" $GKI_CONFIG) -eq 0 ]; then
                 make ARCH=arm64 $REALME_PLATFORM-gki_defconfig
-                # 手动注入SukiSU核心配置
+                # 手动注入核心配置
                 echo "CONFIG_KSU=y" >> .config
                 echo "CONFIG_KPROBES=y" >> .config
+                echo "CONFIG_GKI=y" >> .config
                 cp .config $GKI_CONFIG
-                echo "已生成并强化配置文件"
+                echo "已生成并强化GKI配置文件"
               fi
               
               # 复制到Bazel路径并验证
@@ -247,16 +262,23 @@ jobs:
             export KERNEL_CONFIG=build.config.gki.aarch64
             echo "使用GKI配置: $KERNEL_CONFIG"
             
-            # 强制更新BUILD.bazel路径
+            # 强制更新BUILD.bazel路径（双重验证）
             sed -i "s|config_path = \"\(.*\)\"|config_path = \"$KERNEL_CONFIG\"|" kernel/BUILD.bazel
-            echo "已更新配置路径"
-            
-            # 验证Bazel配置路径
             CONFIG_PATH=$(grep "config_path" kernel/BUILD.bazel | awk -F\" '{print $2}')
+            
             if [ "$CONFIG_PATH" != "$KERNEL_CONFIG" ]; then
-              echo "错误: BUILD.bazel路径更新失败"
-              exit 1
+              echo "手动修正BUILD.bazel路径"
+              echo "config_path = \"$KERNEL_CONFIG\"" > kernel/BUILD.bazel.tmp
+              cat kernel/BUILD.bazel | grep -v "config_path" >> kernel/BUILD.bazel.tmp
+              mv kernel/BUILD.bazel.tmp kernel/BUILD.bazel
+              CONFIG_PATH=$(grep "config_path" kernel/BUILD.bazel | awk -F\" '{print $2}')
+              
+              if [ "$CONFIG_PATH" != "$KERNEL_CONFIG" ]; then
+                echo "错误: BUILD.bazel路径更新失败，手动修改后继续"
+                exit 1
+              fi
             fi
+            echo "BUILD.bazel路径已验证: $CONFIG_PATH"
           fi
           
           if [ "$ARCH" == "arm64" ]; then
