@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 检出realme内核源码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
         with:
           submodules: recursive
       
@@ -331,7 +331,7 @@ jobs:
           ls -la output/
       
       - name: 上传构建产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: realme-gt7pro-kernel
           path: output/
