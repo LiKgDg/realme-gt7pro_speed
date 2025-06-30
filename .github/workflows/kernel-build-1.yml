@@ -1,4 +1,4 @@
-name: realme GT7 Pro Kernel Build with SukiSU
+name: realme GT7 Pro Kernel Build with SukiSU (Complete)
 
 on:
   workflow_dispatch:
@@ -67,9 +67,8 @@ jobs:
           ENABLE_KPM=${{ github.event.inputs.enable-kpm }}
           ENABLE_BBR=${{ github.event.inputs.enable-bbr }}
           
-          # realme高通平台配置
           if [ "$ARCH" == "arm64" ]; then
-            REALME_PLATFORM="msm.sun"  # realme GT7 Pro高通平台标识
+            REALME_PLATFORM="msm.sun"
           else
             REALME_PLATFORM="x86_64"
           fi
@@ -85,38 +84,54 @@ jobs:
           echo "ENABLE_BBR=$ENABLE_BBR" >> $GITHUB_ENV
           echo "REALME_PLATFORM=$REALME_PLATFORM" >> $GITHUB_ENV
       
-      - name: 安装编译依赖
+      - name: 安装编译依赖（增强版）
         run: |
+          sudo apt-get update && apt-get install -y apt-transport-https gnupg
+          
+          # 安装指定版本Bazel
+          curl -fsSL https://bazel.build/bazel-release.pub.gpg | sudo gpg --dearmor -o /usr/share/keyrings/bazel-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/bazel-archive-keyring.gpg] https://storage.googleapis.com/bazel-apt stable main" | sudo tee /etc/apt/sources.list.d/bazel.list > /dev/null
           sudo apt-get update
-          sudo apt-get install -y bc bison flex libssl-dev make gcc-aarch64-linux-gnu 
-          sudo apt-get install -y bazel  # realme内核使用Bazel构建
+          sudo apt-get install -y bazel=5.4.1
+          
+          # 安装编译工具链
+          sudo apt-get install -y bc bison flex libssl-dev make gcc-aarch64-linux-gnu
           if [ "$ARCH" == "x86_64" ]; then
             sudo apt-get install -y gcc-x86-64-linux-gnu
           fi
           
-          # 安装Python依赖用于Bazel构建
+          # 安装Python依赖
           sudo apt-get install -y python3 python3-pip
-          pip3 install numpy six protobuf wheel
+          pip3 install numpy==1.23.5 six==1.16.0 protobuf==3.20.3 wheel
       
-      - name: 集成SukiSU Ultra
+      - name: 集成SukiSU Ultra（增强版）
         if: ${{ env.ENABLE_SUKISU == 'true' }}
         run: |
-          # 创建临时目录存放SukiSU脚本
           mkdir -p sukisutemp
           cd sukisutemp
           
-          # 下载SukiSU安装脚本
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" -o setup.sh
-          chmod +x setup.sh
+          SUCCESS=false
+          for URL in "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" "https://gitee.com/mirrors/SukiSU-Ultra/raw/main/kernel/setup.sh"; do
+            if curl -LSs -o setup.sh $URL; then
+              SUCCESS=true
+              break
+            fi
+          done
           
-          # 集成到realme内核 (非GKI模式使用nongki分支)
-          if [ "$GKI_MODE" == "true" ]; then
-            ./setup.sh main
-          else
-            ./setup.sh nongki
+          if [ "$SUCCESS" == "false" ]; then
+            echo "SukiSU脚本下载失败，请检查网络连接"
+            exit 1
           fi
           
-          # 将修改应用到realme内核根目录
+          chmod +x setup.sh
+          echo "开始集成SukiSU Ultra，GKI模式: $GKI_MODE"
+          
+          if [ "$GKI_MODE" == "true" ]; then
+            ./setup.sh main || { echo "main分支集成失败"; exit 1; }
+          else
+            ./setup.sh nongki || { echo "nongki分支集成失败"; exit 1; }
+          fi
+          
           cp -r kernel/* ..
           cd ..
           rm -rf sukisutemp
@@ -124,31 +139,27 @@ jobs:
       - name: 配置SuSFS
         if: ${{ env.ENABLE_SUSFS == 'true' }}
         run: |
-          # realme内核若已集成SukiSU则自动包含SuSFS
           if [ "$ENABLE_SUKISU" == "true" ]; then
             echo "SukiSU已集成SuSFS，跳过单独配置"
           else
-            # 手动启用SuSFS配置
             echo "CONFIG_SUSFS=y" >> .config
             echo "CONFIG_SUSFS_FS=y" >> .config
           fi
       
-      - name: 生成realme内核配置
+      - name: 生成realme内核配置（调试版）
         run: |
-          # 清除旧配置
           make ARCH=$ARCH mrproper
           
-          # 加载realme默认配置 (GKI模式)
+          echo "当前GKI模式: $GKI_MODE，架构: $ARCH"
           if [ "$GKI_MODE" == "true" ]; then
             if [ "$ARCH" == "arm64" ]; then
               make ARCH=arm64 $REALME_PLATFORM_defconfig
-              # 应用GKI配置
-              cp build.config.gki.aarch64 .config
+              echo "已加载 $REALME_PLATFORM_defconfig"
+              cp build.config.gki.aarch64 .config || { echo "GKI配置文件不存在，请检查内核版本"; exit 1; }
             else
               make ARCH=x86_64 gki_x86_64_defconfig
             fi
           else
-            # 非GKI模式使用allmodconfig
             if [ "$ARCH" == "arm64" ]; then
               make ARCH=arm64 allmodconfig
             else
@@ -156,6 +167,143 @@ jobs:
             fi
           fi
           
-          # SukiSU核心配置
           if [ "$ENABLE_SUKISU" == "true" ]; then
-            echo "CONFIG_KSU=y" >> 
+            echo "CONFIG_KSU=y" >> .config
+            if [ "$GKI_MODE" == "true" ]; then
+              echo "CONFIG_KPROBES=y" >> .config
+            else
+              echo "CONFIG_KSU_MANUAL_HOOK=y" >> .config
+            fi
+          fi
+          
+          if [ "$ENABLE_ZRAM" == "true" ]; then
+            echo "CONFIG_ZRAM=y" >> .config
+            echo "CONFIG_ZRAM_STATS=y" >> .config
+            for alg in ${ZRAM_ALGORITHMS//,/ }; do
+              echo "CONFIG_ZRAM_$alg=y" >> .config
+            done
+          fi
+          
+          if [ "$ENABLE_KPM" == "true" ]; then
+            echo "CONFIG_KPM=y" >> .config
+            echo "CONFIG_KALLSYMS=y" >> .config
+            echo "CONFIG_KALLSYMS_ALL=y" >> .config
+          fi
+          
+          if [ "$ENABLE_BBR" == "true" ]; then
+            echo "CONFIG_TCP_BBR=y" >> .config
+            echo "CONFIG_NET_EMU=y" >> .config
+          fi
+          
+          make ARCH=$ARCH savedefconfig
+          if [ ! -f defconfig ]; then
+            echo "配置保存失败，检查是否有语法错误"
+            exit 1
+          fi
+          cp defconfig .config
+          
+          grep -E "KSU|SUSFS|ZRAM|KPM|TCP_BBR" .config
+      
+      - name: 使用Bazel编译内核（修复版）
+        run: |
+          export BAZEL_VS=16
+          export PATH=$PATH:/usr/bin:/usr/local/bin
+          export PYTHON_BIN_PATH=/usr/bin/python3
+          
+          bazel version
+          
+          if [ "$ARCH" == "arm64" ]; then
+            if [ "$GKI_MODE" == "true" ]; then
+              python3 build_with_bazel.py --arch=arm64 --config=gki || python3 build_with_bazel.py --arch=arm64 --config=gki
+            else
+              python3 build_with_bazel.py --arch=arm64 --config=allmodconfig || python3 build_with_bazel.py --arch=arm64 --config=allmodconfig
+            fi
+          else
+            if [ "$GKI_MODE" == "true" ]; then
+              python3 build_with_bazel.py --arch=x86_64 --config=gki || python3 build_with_bazel.py --arch=x86_64 --config=gki
+            else
+              python3 build_with_bazel.py --arch=x86_64 --config=allmodconfig || python3 build_with_bazel.py --arch=x86_64 --config=allmodconfig
+            fi
+          fi
+          
+          make ARCH=$ARCH modules -j$(nproc)
+      
+      - name: 打包内核产物（含错误处理）
+        run: |
+          mkdir -p output
+          
+          if [ "$ARCH" == "arm64" ]; then
+            if [ "$GKI_MODE" == "true" ]; then
+              if [ ! -f bazel-out/arm64-Release/obj/kernel/arch/arm64/boot/Image ]; then
+                echo "GKI内核镜像未生成，请检查Bazel编译日志"
+                exit 1
+              fi
+              cp bazel-out/arm64-Release/obj/kernel/arch/arm64/boot/Image output/Image-gki
+            else
+              if [ ! -f arch/arm64/boot/Image ]; then
+                echo "非GKI内核镜像未生成，请检查make编译日志"
+                exit 1
+              fi
+              cp arch/arm64/boot/Image output/Image
+            fi
+          else
+            if [ "$GKI_MODE" == "true" ]; then
+              if [ ! -f bazel-out/x86_64-Release/obj/kernel/arch/x86/boot/bzImage ]; then
+                echo "GKI内核镜像未生成，请检查Bazel编译日志"
+                exit 1
+              fi
+              cp bazel-out/x86_64-Release/obj/kernel/arch/x86/boot/bzImage output/bzImage-gki
+            else
+              if [ ! -f arch/x86/boot/bzImage ]; then
+                echo "非GKI内核镜像未生成，请检查make编译日志"
+                exit 1
+              fi
+              cp arch/x86/boot/bzImage output/bzImage
+            fi
+          fi
+          
+          mkdir -p output/modules
+          make ARCH=$ARCH INSTALL_MOD_PATH=output/modules modules_install
+          
+          mkdir -p output/AnyKernel3
+          cp -r scripts/anykernel3_template output/AnyKernel3/
+          cd output/AnyKernel3
+          
+          if [ "$ARCH" == "arm64" ]; then
+            if [ "$GKI_MODE" == "true" ]; then
+              cp ../../Image-gki zImage
+            else
+              cp ../../Image zImage
+            fi
+          else
+            if [ "$GKI_MODE" == "true" ]; then
+              cp ../../bzImage-gki zImage
+            else
+              cp ../../bzImage zImage
+            fi
+          fi
+          
+          sed -i "s/KERNEL_VERSION/$KERNEL_VERSION/g" flash.sh
+          sed -i "s/ARCHITECTURE/$ARCH/g" flash.sh
+          
+          cd ..
+          if [ "$ARCH" == "arm64" ]; then
+            if [ "$GKI_MODE" == "true" ]; then
+              tar -czvf realme-gt7pro-gki-arm64-${KERNEL_VERSION}.tar.gz AnyKernel3
+            else
+              tar -czvf realme-gt7pro-arm64-${KERNEL_VERSION}.tar.gz AnyKernel3
+            fi
+          else
+            if [ "$GKI_MODE" == "true" ]; then
+              tar -czvf realme-gt7pro-gki-x86_64-${KERNEL_VERSION}.tar.gz AnyKernel3
+            else
+              tar -czvf realme-gt7pro-x86_64-${KERNEL_VERSION}.tar.gz AnyKernel3
+            fi
+          fi
+      
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: realme-gt7pro-kernel
+          path: output/
+          retention-days: 7
