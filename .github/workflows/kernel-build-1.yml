@@ -56,12 +56,12 @@ jobs:
 
       - name: 克隆编译工具链
         run: |
-          # 克隆 Clang 工具链
-          git clone --depth=1 ${{ env.TOOLCHAIN_URL }} -b refs/heads/ks-kernel.lnx.3.0.r1-rel proton-clang
-          # 克隆 GCC 工具链
-          git clone --depth=1 ${{ env.GCC_TOOLCHAIN_URL }} -b refs/heads/ks-kernel.lnx.3.0.r1-rel gcc-toolchain
-          # 克隆 NDK
-          git clone --depth=1 ${{ env.NDK_URL }} -b refs/heads/ks-kernel.lnx.3.0.r1-rel ndk-r23
+          # 克隆 Clang 工具链 - 使用默认分支
+          git clone --depth=1 ${{ env.TOOLCHAIN_URL }} proton-clang
+          # 克隆 GCC 工具链 - 使用默认分支
+          git clone --depth=1 ${{ env.GCC_TOOLCHAIN_URL }} gcc-toolchain
+          # 克隆 NDK - 使用默认分支
+          git clone --depth=1 ${{ env.NDK_URL }} ndk-r23
 
       - name: 克隆AnyKernel3
         run: |
