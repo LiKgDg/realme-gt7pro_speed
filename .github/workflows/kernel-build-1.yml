@@ -30,7 +30,7 @@ env:
   # 替换为有效的 Clang 工具链下载链接，这里使用 llvm-project 示例
   TOOLCHAIN_URL: https://github.com/llvm/llvm-project.git
   # 保留原有的 GCC 工具链链接，可按需确认有效性
-  GCC_TOOLCHAIN_URL: https://git.codelinaro.org/clo/la/kernelplatform/prebuilts/gcc/linux-x86/host/x86_64-linux-glibc2.17-4.8/-/archive/aosp-new/caf2/caf2/clo/main/x86_64-linux-glibc2.17-4.8-aosp-new-caf2-caf2-clo-main.tar.gz
+  GCC_TOOLCHAIN_URL: https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git
   NDK_URL: https://git.codelinaro.org/clo/la/kernel_platform/toolchain/prebuilts/ndk/r23/-/archive/aosp-new/aosp-new/master/r23-aosp-new-aosp-new-master.tar.gz
   ARCH: arm64
   SUBARCH: arm64
