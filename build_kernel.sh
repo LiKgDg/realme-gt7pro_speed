@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # realme GT7 Pro 内核本地构建脚本 (Ubuntu环境)
-# 适用于Ubuntu 20.04/22.04，需提前安装必要依赖
+# 适用于Ubuntu 20.04/22.04/23.10+，修复外部管理环境问题
 
 # 颜色定义
 RED='\033[0;31m'
@@ -22,15 +22,28 @@ install_dependencies() {
   echo -e "${YELLOW}正在安装编译依赖...${NC}"
   sudo apt-get update
   sudo apt-get install -y bc bison flex libssl-dev make gcc-aarch64-linux-gnu patch
-  sudo apt-get install -y bazel=5.4.1
+  sudo apt-get install -y bazel=5.4.1 python3-full python3-venv
+  
   # 询问架构
   read -p "请输入架构 (arm64/x86_64，默认arm64): " ARCH
   ARCH=${ARCH:-"arm64"}
   if [ "$ARCH" == "x86_64" ]; then
     sudo apt-get install -y gcc-x86-64-linux-gnu
   fi
-  sudo apt-get install -y python3 python3-pip
-  pip3 install numpy==1.23.5 six==1.16.0 protobuf==3.20.3 wheel
+  
+  # 创建并激活虚拟环境
+  echo -e "${YELLOW}正在创建Python虚拟环境...${NC}"
+  python3 -m venv ~/kernel_build_venv
+  source ~/kernel_build_venv/bin/activate
+  
+  # 在虚拟环境中安装Python包
+  echo -e "${YELLOW}正在安装Python依赖...${NC}"
+  pip install numpy==1.23.5 six==1.16.0 protobuf==3.20.3 wheel
+  
+  # 保存虚拟环境路径到环境变量
+  echo "export KERNEL_VENV=~/kernel_build_venv" >> ~/.bashrc
+  source ~/.bashrc
+  
   echo -e "${GREEN}依赖安装完成${NC}"
 }
 
@@ -245,9 +258,11 @@ compile_kernel() {
   echo -e "${YELLOW}正在编译内核...${NC}"
   cd kernel
   
+  # 激活虚拟环境
+  source $KERNEL_VENV/bin/activate
+  
   export BAZEL_VS=16
   export PATH=$PATH:/usr/bin:/usr/local/bin
-  export PYTHON_BIN_PATH=/usr/bin/python3
   
   bazel version
   
