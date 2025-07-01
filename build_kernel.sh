@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# realme GT7 Pro 内核本地构建脚本 (Ubuntu环境)
-# 适用于Ubuntu 20.04/22.04/23.10+，修复外部管理环境问题
+# realme GT7 Pro 内核本地构建脚本 (Ubuntu 25.04环境优化)
+# 适用于Ubuntu 25.04，修复外部管理环境问题和GCC兼容性
 
 # 颜色定义
 RED='\033[0;31m'
@@ -17,27 +17,63 @@ check_command() {
   fi
 }
 
+# 配置编译环境
+configure_build_environment() {
+  echo -e "${YELLOW}正在配置编译环境...${NC}"
+  
+  # 检查并设置GCC版本
+  GCC_VERSION=$(gcc --version | head -n1 | grep -oP '\d+\.\d+')
+  if (( $(echo "$GCC_VERSION >= 13.0" | bc -l) )); then
+    echo -e "${YELLOW}检测到GCC版本 >= 13.0，设置兼容选项${NC}"
+    export CFLAGS="-Wno-error=stringop-overflow -Wno-error=implicit-fallthrough"
+    export CXXFLAGS="$CFLAGS"
+  fi
+  
+  # 设置编译线程数
+  export MAKEFLAGS="-j$(nproc)"
+  
+  echo -e "${GREEN}编译环境配置完成${NC}"
+}
+
 # 安装依赖
 install_dependencies() {
   echo -e "${YELLOW}正在安装编译依赖...${NC}"
-  sudo apt-get update
-  sudo apt-get install -y bc bison flex libssl-dev make gcc-aarch64-linux-gnu patch
-  sudo apt-get install -y bazel=5.4.1 python3-full python3-venv
   
-  # 询问架构
+  # 更新包索引
+  sudo apt-get update
+  
+  # 安装基础编译工具
+  sudo apt-get install -y build-essential bc bison flex libssl-dev patch
+  
+  # 安装交叉编译工具链
   read -p "请输入架构 (arm64/x86_64，默认arm64): " ARCH
   ARCH=${ARCH:-"arm64"}
-  if [ "$ARCH" == "x86_64" ]; then
-    sudo apt-get install -y gcc-x86-64-linux-gnu
+  
+  if [ "$ARCH" == "arm64" ]; then
+    sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+  else
+    sudo apt-get install -y gcc-x86-64-linux-gnu binutils-x86-64-linux-gnu
   fi
   
+  # 安装Bazel构建工具
+  echo -e "${YELLOW}正在安装Bazel构建工具...${NC}"
+  sudo apt-get install -y apt-transport-https curl gnupg
+  curl -fsSL https://bazel.build/bazel-release.pub.gpg | gpg --dearmor > bazel.gpg
+  sudo mv bazel.gpg /etc/apt/trusted.gpg.d/
+  echo "deb [arch=amd64] https://storage.googleapis.com/bazel-apt stable jdk1.8" | sudo tee /etc/apt/sources.list.d/bazel.list
+  sudo apt-get update
+  sudo apt-get install -y bazel-5.4.1
+  sudo ln -s /usr/bin/bazel-5.4.1 /usr/bin/bazel
+  
+  # 安装Python环境和依赖
+  echo -e "${YELLOW}正在配置Python环境...${NC}"
+  sudo apt-get install -y python3-full python3-venv python3-pip
+  
   # 创建并激活虚拟环境
-  echo -e "${YELLOW}正在创建Python虚拟环境...${NC}"
   python3 -m venv ~/kernel_build_venv
   source ~/kernel_build_venv/bin/activate
   
   # 在虚拟环境中安装Python包
-  echo -e "${YELLOW}正在安装Python依赖...${NC}"
   pip install numpy==1.23.5 six==1.16.0 protobuf==3.20.3 wheel
   
   # 保存虚拟环境路径到环境变量
@@ -411,6 +447,7 @@ main() {
   check_command bazel
   
   install_dependencies
+  configure_build_environment  # 新增环境配置步骤
   init_source
   integrate_sukisu
   configure_kernel
