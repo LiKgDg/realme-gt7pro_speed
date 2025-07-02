@@ -1,395 +1,102 @@
-name: realme GT7 Pro Kernel Build with SukiSU (Final Ultimate)
+name: Build RMX5090 Kernel (Android 15)
 
 on:
-  workflow_dispatch:
-    inputs:
-      kernel-version:
-        description: '内核版本 (如: 6.6)'
-        required: true
-        default: '6.6'
-      architecture:
-        description: '架构 (arm64/x86_64)'
-        required: true
-        default: 'arm64'
-      gki-mode:
-        description: 'GKI模式 (true/false)'
-        required: true
-        default: 'true'
-        type: boolean
-      enable-sukisu:
-        description: '启用 SukiSU Ultra'
-        required: true
-        default: 'true'
-        type: boolean
-      enable-susfs:
-        description: '启用 SuSFS'
-        required: true
-        default: 'true'
-        type: boolean
-      enable-zram:
-        description: '启用 ZRAM'
-        required: true
-        default: 'true'
-        type: boolean
-      zram-algorithms:
-        description: 'ZRAM 算法 (逗号分隔, 如: lz4,lzo)'
-        required: false
-        default: 'lz4,lzo'
-      enable-kpm:
-        description: '启用 KPM'
-        required: true
-        default: 'true'
-        type: boolean
-      enable-bbr:
-        description: '启用 BBR'
-        required: true
-        default: 'true'
-        type: boolean
+  push:
+    branches: [ master ]
+    paths:
+      - 'arch/arm64/configs/vendor/sun_perf.config'
+      - 'Makefile'
+      - 'drivers/**'
+      - 'kernel/**'
+  pull_request:
+    branches: [ master ]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
-      - name: 检出realme内核源码
+      - name: Checkout kernel source
         uses: actions/checkout@v4
         with:
-          submodules: recursive
-      
-      - name: 初始化子模块（关键修复）
-        run: |
-          git submodule update --init --recursive
-          echo "子模块初始化完成"
-      
-      - name: 设置环境变量
-        run: |
-          KERNEL_VERSION=${{ github.event.inputs.kernel-version }}
-          ARCH=${{ github.event.inputs.architecture }}
-          GKI_MODE=${{ github.event.inputs.gki-mode }}
-          ENABLE_SUKISU=${{ github.event.inputs.enable-sukisu }}
-          ENABLE_SUSFS=${{ github.event.inputs.enable-susfs }}
-          ENABLE_ZRAM=${{ github.event.inputs.enable-zram }}
-          ZRAM_ALGORITHMS=${{ github.event.inputs.zram-algorithms }}
-          ENABLE_KPM=${{ github.event.inputs.enable-kpm }}
-          ENABLE_BBR=${{ github.event.inputs.enable-bbr }}
-          
-          if [ "$ARCH" == "arm64" ]; then
-            REALME_PLATFORM="msm.sun"
-          else
-            REALME_PLATFORM="x86_64"
-          fi
-          
-          echo "KERNEL_VERSION=$KERNEL_VERSION" >> $GITHUB_ENV
-          echo "ARCH=$ARCH" >> $GITHUB_ENV
-          echo "GKI_MODE=$GKI_MODE" >> $GITHUB_ENV
-          echo "ENABLE_SUKISU=$ENABLE_SUKISU" >> $GITHUB_ENV
-          echo "ENABLE_SUSFS=$ENABLE_SUSFS" >> $GITHUB_ENV
-          echo "ENABLE_ZRAM=$ENABLE_ZRAM" >> $GITHUB_ENV
-          echo "ZRAM_ALGORITHMS=$ZRAM_ALGORITHMS" >> $GITHUB_ENV
-          echo "ENABLE_KPM=$ENABLE_KPM" >> $GITHUB_ENV
-          echo "ENABLE_BBR=$ENABLE_BBR" >> $GITHUB_ENV
-          echo "REALME_PLATFORM=$REALME_PLATFORM" >> $GITHUB_ENV
-      
-      - name: 安装编译依赖（终极版）
+          repository: realme-kernel-opensource/realme_GT7pro-Speed-AndroidV-kernel-source
+          path: kernel
+          submodules: 'recursive'
+          # 若需指定特定内核版本，可添加commit参数
+          # ref: 013ec21bba94  # 替换为目标commit哈希
+
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison flex libssl-dev make gcc-aarch64-linux-gnu patch
-          sudo apt-get install -y bazel=5.4.1
-          if [ "$ARCH" == "x86_64" ]; then
-            sudo apt-get install -y gcc-x86-64-linux-gnu
-          fi
-          sudo apt-get install -y python3 python3-pip
-          pip3 install numpy==1.23.5 six==1.16.0 protobuf==3.20.3 wheel
-      
-      - name: 集成SukiSU Ultra（终极修复）
-        if: ${{ env.ENABLE_SUKISU == 'true' }}
+          sudo apt-get install -y \
+            build-essential bc bison flex libssl-dev patch \
+            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
+            python3 python3-pip zip libelf-dev  # 新增libelf-dev适配Android 15
+
+      - name: Integrate SukiSU Ultra (Android 15兼容版)
+        working-directory: ./kernel
         run: |
-          mkdir -p sukisutemp
-          cd sukisutemp
-          
-          # 三镜像源下载（解决网络问题）
-          SUCCESS=false
-          for URL in "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" \
-                     "https://gitee.com/mirrors/SukiSU-Ultra/raw/main/kernel/setup.sh" \
-                     "https://hub.fastgit.xyz/SukiSU-Ultra/SukiSU-Ultra/raw/main/kernel/setup.sh"; do
-            if curl -LSs -o setup.sh $URL; then
-              SUCCESS=true
-              break
-            fi
-          done
-          
-          if [ "$SUCCESS" == "false" ]; then
-            echo "SukiSU脚本下载失败，尝试手动下载后放入kernel目录"
-            exit 1
-          fi
-          
+          curl -LSs -o setup.sh https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh
           chmod +x setup.sh
-          echo "开始集成SukiSU Ultra，GKI模式: $GKI_MODE"
-          ./setup.sh $([ "$GKI_MODE" == "true" ] && echo "main" || echo "nongki") || { echo "集成脚本执行失败"; exit 1; }
-          
-          # 自动部署补丁文件（三重保障）
-          mkdir -p kernel/patches
-          if [ "$GKI_MODE" == "true" ]; then
-            PATCH_URL="https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/patches/0001-Add-KSU-hooks-for-GKI.patch"
-            PATCH_FILE="kernel/patches/0001-Add-KSU-hooks-for-GKI.patch"
-          else
-            PATCH_URL="https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/patches/0001-Add-KSU-hooks-for-nongki.patch"
-            PATCH_FILE="kernel/patches/0001-Add-KSU-hooks-for-nongki.patch"
-          fi
-          
-          # 三重下载保障
-          if [ ! -f $PATCH_FILE ]; then
-            for URL in $PATCH_URL "https://gitee.com/mirrors/SukiSU-Ultra/raw/main/kernel/patches/0001-Add-KSU-hooks-for-GKI.patch" "https://hub.fastgit.xyz/SukiSU-Ultra/SukiSU-Ultra/raw/main/kernel/patches/0001-Add-KSU-hooks-for-GKI.patch"; do
-              if curl -LSs $URL -o $PATCH_FILE; then
-                chmod +x $PATCH_FILE
-                echo "已从镜像下载补丁: $PATCH_FILE"
-                break
-              fi
-            done
-          fi
-          
-          if [ ! -f $PATCH_FILE ]; then
-            echo "补丁文件下载失败，请手动下载后放入kernel/patches目录"
-            exit 1
-          fi
-          
-          # 应用补丁
-          patch -p1 < $PATCH_FILE || { echo "补丁应用失败，尝试手动应用"; exit 1; }
-          
-          cp -r kernel/* ..
-          cd ..
-          rm -rf sukisutemp
-      
-      - name: 配置SuSFS
-        if: ${{ env.ENABLE_SUSFS == 'true' }}
+          # 针对Android 15使用main分支最新适配
+          ./setup.sh main
+          rm -f setup.sh
+
+      - name: Configure kernel for Android 15 & RMX5090
+        working-directory: ./kernel
         run: |
-          if [ "$ENABLE_SUKISU" == "true" ]; then
-            echo "SukiSU已集成SuSFS，跳过单独配置"
-          else
-            echo "CONFIG_SUSFS=y" >> .config
-            echo "CONFIG_SUSFS_FS=y" >> .config
-          fi
-      
-      - name: 生成realme内核配置（终极修复）
-        run: |
+          ARCH=arm64
           make ARCH=$ARCH mrproper
+          # 加载官方配置并适配Android 15
+          cp arch/arm64/configs/vendor/sun_perf.config .config
           
-          echo "当前GKI模式: $GKI_MODE，架构: $ARCH"
-          if [ "$GKI_MODE" == "true" ]; then
-            if [ "$ARCH" == "arm64" ]; then
-              make ARCH=arm64 $REALME_PLATFORM_defconfig
-              echo "已加载 $REALME_PLATFORM_defconfig"
-              
-              GKI_CONFIG=build.config.gki.aarch64
-              # 四重验证配置文件
-              if [ ! -f $GKI_CONFIG ] || [ $(grep -c "CONFIG_KSU=y" $GKI_CONFIG) -eq 0 ] || [ $(wc -l < $GKI_CONFIG) -lt 100 ] || [ $(grep -c "CONFIG_GKI=y" $GKI_CONFIG) -eq 0 ]; then
-                make ARCH=arm64 $REALME_PLATFORM-gki_defconfig
-                # 手动注入核心配置
-                echo "CONFIG_KSU=y" >> .config
-                echo "CONFIG_KPROBES=y" >> .config
-                echo "CONFIG_GKI=y" >> .config
-                cp .config $GKI_CONFIG
-                echo "已生成并强化GKI配置文件"
-              fi
-              
-              # 复制到Bazel路径并验证
-              cp $GKI_CONFIG kernel/$GKI_CONFIG
-              chmod +r kernel/$GKI_CONFIG
-              echo "配置文件已部署到kernel/目录"
-              
-              cp $GKI_CONFIG .config || { echo "GKI配置文件复制失败"; exit 1; }
-            else
-              make ARCH=x86_64 gki_x86_64_defconfig
-            fi
-          else
-            if [ "$ARCH" == "arm64" ]; then
-              make ARCH=arm64 allmodconfig
-            else
-              make ARCH=x86_64 allmodconfig
-            fi
-          fi
+          # 核心配置：启用KernelSU及Android 15必要选项
+          echo "CONFIG_KSU=y" >> .config
+          echo "CONFIG_KPROBES=y" >> .config
+          echo "CONFIG_GKI=y" >> .config
+          echo "CONFIG_MACH_RMX5090=y" >> .config  # 机型标识
+          echo "CONFIG_ANDROID15=y" >> .config     # Android 15兼容标识
+          echo "CONFIG_SYSTEM_SECURITY=y" >> .config  # 适配Android 15安全机制
           
-          # SukiSU核心配置
-          if [ "$ENABLE_SUKISU" == "true" ]; then
-            echo "CONFIG_KSU=y" >> .config
-            if [ "$GKI_MODE" == "true" ]; then
-              echo "CONFIG_KPROBES=y" >> .config
-            else
-              echo "CONFIG_KSU_MANUAL_HOOK=y" >> .config
-            fi
-          fi
+          # 补充6.6.30内核特性
+          grep -q "CONFIG_ZRAM=y" .config || echo "CONFIG_ZRAM=y" >> .config
+          grep -q "CONFIG_TCP_BBR=y" .config || echo "CONFIG_TCP_BBR=y" >> .config
+          grep -q "CONFIG_LTO=y" .config || echo "CONFIG_LTO=y" >> .config  # 启用LTO优化
           
-          # ZRAM配置
-          if [ "$ENABLE_ZRAM" == "true" ]; then
-            echo "CONFIG_ZRAM=y" >> .config
-            echo "CONFIG_ZRAM_STATS=y" >> .config
-            for alg in ${ZRAM_ALGORITHMS//,/ }; do
-              echo "CONFIG_ZRAM_$alg=y" >> .config
-            done
-          fi
-          
-          # KPM配置
-          if [ "$ENABLE_KPM" == "true" ]; then
-            echo "CONFIG_KPM=y" >> .config
-            echo "CONFIG_KALLSYMS=y" >> .config
-            echo "CONFIG_KALLSYMS_ALL=y" >> .config
-          fi
-          
-          # BBR配置
-          if [ "$ENABLE_BBR" == "true" ]; then
-            echo "CONFIG_TCP_BBR=y" >> .config
-            echo "CONFIG_NET_EMU=y" >> .config
-          fi
-          
+          # 保存配置
           make ARCH=$ARCH savedefconfig
-          if [ ! -f defconfig ]; then
-            echo "配置保存失败，检查是否有语法错误"
-            exit 1
-          fi
           cp defconfig .config
-          
-          echo "==== 关键配置 ===="
-          grep -E "KSU|SUSFS|ZRAM|KPM|TCP_BBR|GKI" .config
-      
-      - name: 使用Bazel编译内核（终极修复）
+
+      - name: Build kernel (6.6.30-android15)
+        working-directory: ./kernel
         run: |
-          export BAZEL_VS=16
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
           export PATH=$PATH:/usr/bin:/usr/local/bin
-          export PYTHON_BIN_PATH=/usr/bin/python3
-          
-          bazel version
-          
-          if [ "$GKI_MODE" == "true" ] && [ "$ARCH" == "arm64" ]; then
-            export KERNEL_CONFIG=build.config.gki.aarch64
-            echo "使用GKI配置: $KERNEL_CONFIG"
-            
-            # 强制更新BUILD.bazel路径（双重验证）
-            sed -i "s|config_path = \"\(.*\)\"|config_path = \"$KERNEL_CONFIG\"|" kernel/BUILD.bazel
-            CONFIG_PATH=$(grep "config_path" kernel/BUILD.bazel | awk -F\" '{print $2}')
-            
-            if [ "$CONFIG_PATH" != "$KERNEL_CONFIG" ]; then
-              echo "手动修正BUILD.bazel路径"
-              echo "config_path = \"$KERNEL_CONFIG\"" > kernel/BUILD.bazel.tmp
-              cat kernel/BUILD.bazel | grep -v "config_path" >> kernel/BUILD.bazel.tmp
-              mv kernel/BUILD.bazel.tmp kernel/BUILD.bazel
-              CONFIG_PATH=$(grep "config_path" kernel/BUILD.bazel | awk -F\" '{print $2}')
-              
-              if [ "$CONFIG_PATH" != "$KERNEL_CONFIG" ]; then
-                echo "错误: BUILD.bazel路径更新失败，手动修改后继续"
-                exit 1
-              fi
-            fi
-            echo "BUILD.bazel路径已验证: $CONFIG_PATH"
-          fi
-          
-          if [ "$ARCH" == "arm64" ]; then
-            if [ "$GKI_MODE" == "true" ]; then
-              python3 build_with_bazel.py --arch=arm64 --config=gki || python3 build_with_bazel.py --arch=arm64 --config=gki
-            else
-              python3 build_with_bazel.py --arch=arm64 --config=allmodconfig || python3 build_with_bazel.py --arch=arm64 --config=allmodconfig
-            fi
-          else
-            if [ "$GKI_MODE" == "true" ]; then
-              python3 build_with_bazel.py --arch=x86_64 --config=gki || python3 build_with_bazel.py --arch=x86_64 --config=gki
-            else
-              python3 build_with_bazel.py --arch=x86_64 --config=allmodconfig || python3 build_with_bazel.py --arch=x86_64 --config=allmodconfig
-            fi
-          fi
-          
-          make ARCH=$ARCH modules -j$(nproc)
-      
-      - name: 打包内核产物（含严格错误处理）
+          # 针对6.6.30内核优化编译参数
+          make -j$(nproc) LD=ld.lld  # 使用LLD链接器适配Android 15
+          # 验证镜像
+          ls -lh arch/arm64/boot/Image
+
+      - name: Prepare AnyKernel3 (Android 15版)
         run: |
-          mkdir -p output
+          git clone https://github.com/osm0sis/AnyKernel3 anykernel
+          cp ./kernel/arch/arm64/boot/Image ./anykernel/zImage
           
-          if [ "$ARCH" == "arm64" ]; then
-            if [ "$GKI_MODE" == "true" ]; then
-              if [ ! -f bazel-out/arm64-Release/obj/kernel/arch/arm64/boot/Image ]; then
-                echo "错误: GKI内核镜像未生成，请检查Bazel编译日志"
-                ls -la bazel-out/arm64-Release/obj/kernel/arch/arm64/boot/
-                exit 1
-              fi
-              cp bazel-out/arm64-Release/obj/kernel/arch/arm64/boot/Image output/Image-gki
-            else
-              if [ ! -f arch/arm64/boot/Image ]; then
-                echo "错误: 非GKI内核镜像未生成，请检查make编译日志"
-                ls -la arch/arm64/boot/
-                exit 1
-              fi
-              cp arch/arm64/boot/Image output/Image
-            fi
-          else
-            if [ "$GKI_MODE" == "true" ]; then
-              if [ ! -f bazel-out/x86_64-Release/obj/kernel/arch/x86/boot/bzImage ]; then
-                echo "错误: GKI内核镜像未生成，请检查Bazel编译日志"
-                ls -la bazel-out/x86_64-Release/obj/kernel/arch/x86/boot/
-                exit 1
-              fi
-              cp bazel-out/x86_64-Release/obj/kernel/arch/x86/boot/bzImage output/bzImage-gki
-            else
-              if [ ! -f arch/x86/boot/bzImage ]; then
-                echo "错误: 非GKI内核镜像未生成，请检查make编译日志"
-                ls -la arch/x86/boot/
-                exit 1
-              fi
-              cp arch/x86/boot/bzImage output/bzImage
-            fi
-          fi
-          
-          mkdir -p output/modules
-          make ARCH=$ARCH INSTALL_MOD_PATH=output/modules modules_install
-          
-          mkdir -p output/AnyKernel3
-          if [ -d "scripts/anykernel3_template" ]; then
-            cp -r scripts/anykernel3_template output/AnyKernel3/
-          else
-            echo "警告: 未找到AnyKernel3模板，使用简化模板"
-            mkdir -p output/AnyKernel3/{boot,system,vendor}
-            echo "#!/bin/sh" > output/AnyKernel3/flash.sh
-            echo "echo \"No flash script available\"" >> output/AnyKernel3/flash.sh
-            chmod +x output/AnyKernel3/flash.sh
-          fi
-          
-          cd output/AnyKernel3
-          if [ "$ARCH" == "arm64" ]; then
-            if [ "$GKI_MODE" == "true" ]; then
-              cp ../../Image-gki zImage
-            else
-              cp ../../Image zImage
-            fi
-          else
-            if [ "$GKI_MODE" == "true" ]; then
-              cp ../../bzImage-gki zImage
-            else
-              cp ../../bzImage zImage
-            fi
-          fi
-          
-          if [ -f flash.sh ]; then
-            sed -i "s/KERNEL_VERSION/$KERNEL_VERSION/g" flash.sh
-            sed -i "s/ARCHITECTURE/$ARCH/g" flash.sh
-          fi
-          
-          cd ..
-          if [ "$ARCH" == "arm64" ]; then
-            if [ "$GKI_MODE" == "true" ]; then
-              tar -czvf realme-gt7pro-gki-arm64-${KERNEL_VERSION}.tar.gz AnyKernel3
-            else
-              tar -czvf realme-gt7pro-arm64-${KERNEL_VERSION}.tar.gz AnyKernel3
-            fi
-          else
-            if [ "$GKI_MODE" == "true" ]; then
-              tar -czvf realme-gt7pro-gki-x86_64-${KERNEL_VERSION}.tar.gz AnyKernel3
-            else
-              tar -czvf realme-gt7pro-x86_64-${KERNEL_VERSION}.tar.gz AnyKernel3
-            fi
-          fi
-          
-          echo "==== 打包完成 ===="
-          ls -la output/
-      
-      - name: 上传构建产物
+          # 配置Android 15及机型信息
+          echo "kernel.string=RMX5090 Kernel 6.6.30 (Android 15)" > ./anykernel/properties
+          echo "do.devicecheck=1" >> ./anykernel/properties
+          echo "device.name1=RMX5090" >> ./anykernel/properties
+          echo "device.name2=GT7ProSpeed" >> ./anykernel/properties
+          echo "supported.versions=15" >> ./anykernel/properties  # 明确支持Android 15
+          echo "kernel.version=6.6.30-android15-8-g013ec21bba94" >> ./anykernel/properties
+
+      - name: Package kernel zip
+        run: |
+          cd anykernel
+          zip -r9 ../RMX5090-6.6.30-android15-kernel.zip * -x .git README.md
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: realme-gt7pro-kernel
-          path: output/
-          retention-days: 7
+          name: RMX5090-android15-kernel
+          path: RMX5090-6.6.30-android15-kernel.zip
